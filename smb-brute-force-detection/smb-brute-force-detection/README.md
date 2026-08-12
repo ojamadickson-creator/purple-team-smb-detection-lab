@@ -39,7 +39,7 @@ Standard VirtualBox NAT. Gives every VM outbound internet access for updates wit
 The attack path that actually worked looks like this:
 
 ```
-REMnux (192.168.56.12) 
+REMnux (192.168.57.12) 
   -> OPNsense LAN Gateway (192.168.56.254) 
   -> Domain Controller (192.168.56.102:445) 
   -> Windows Event Log (4625/4624) 
