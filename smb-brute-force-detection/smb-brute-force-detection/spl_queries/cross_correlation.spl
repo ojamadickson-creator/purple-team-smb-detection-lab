@@ -1,0 +1,6 @@
+index=main (sourcetype=syslog "pass") OR (host=dc EventCode=4625)
+| eval attack_phase=case(
+    sourcetype="syslog" AND dst_port="445", "Phase 3: SMB Auth Attempt",
+    host="dc" AND EventCode=4625, "Phase 3a: Failed Windows Logon")
+| stats count by _time, attack_phase, src_ip
+| sort _time
