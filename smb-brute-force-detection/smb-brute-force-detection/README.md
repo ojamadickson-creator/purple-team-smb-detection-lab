@@ -56,7 +56,7 @@ One weird thing I noticed: Splunk recorded the source IP as `192.168.56.1`, not 
 
 ### Network Segmentation with OPNsense
 
-I used OPNsense 26.7 as the perimeter firewall. The original SOP I was working from mentioned pfSense, but the actual lab uses OPNsense. The WAN interface faces the untrusted segment, and the LAN interface faces the internal network. I had to uncheck "Block Private Networks" on the WAN interface because this is a lab using RFC 1918 addresses everywhere. Without that change, OPNsense drops traffic before firewall rules even get evaluated.
+I used OPNsense 26.7 as the perimeter firewall. The lab uses OPNsense. The WAN interface faces the untrusted segment, and the LAN interface faces the internal network. I had to uncheck "Block Private Networks" on the WAN interface because this is a lab using RFC 1918 addresses everywhere. Without that change, OPNsense drops traffic before firewall rules even get evaluated.
 
 The rules I configured are simple but deliberate:
 - Allow ICMP for diagnostics
@@ -69,11 +69,11 @@ Rule order matters. A lot. If the deny rule sits above the pass rule, nothing ge
 
 ### Windows Domain Controller Hardening
 
-The DC runs Windows Server 2016. I enabled all three Windows Firewall profiles (Domain, Public, Private) and added granular allow rules for the lab subnets. Here's the thing about Windows Firewall that caught me off guard: it treats cross-subnet traffic as "external" even when everything is in a lab. So traffic from the WAN segment gets evaluated against the Public profile, not Domain. I had to explicitly allow SMB from the lab IP ranges to get authentication attempts through.
+The DC runs Windows Server 2016. I enabled all three Windows Firewall profiles (Domain, Public, Private) and added granular allow rules for the lab subnets. I had to explicitly allow SMB from the lab IP ranges to get authentication attempts through.
 
 ### Log Ingestion Pipeline
 
-I deployed the Splunk Universal Forwarder on the DC to ship `WinEventLog:Security` to the main index. For network visibility, I configured OPNsense to forward firewall syslogs via UDP 514. That dual visibility is what makes the cross-source correlation possible. Without the firewall logs, you're blind to reconnaissance. Without the endpoint logs, you're blind to whether the attack actually succeeded.
+I deployed the Splunk Universal Forwarder on the DC to ship `WinEventLog: Security, Application and System` to the main index. For network visibility, I configured OPNsense to forward firewall syslogs via UDP 514. That dual visibility is what makes the cross-source correlation possible. Without the firewall logs, you're blind to reconnaissance. Without the endpoint logs, you're blind to whether the attack actually succeeded.
 
 ### Detection Engineering
 
@@ -84,8 +84,6 @@ This is where the project gets fun. I wrote three SPL queries that work together
 index=main sourcetype=WinEventLog EventCode=4625
 | stats count by src_ip
 | where count > 5
-| rename count as Failed_Attempts
-| sort - Failed_Attempts
 ```
 
 Why five? Because normal users don't fat-finger their password six times in a row. Automated tools like Hydra do. Five is the sweet spot. Low enough to catch real attacks fast, high enough to avoid alert fatigue from someone who just got a new keyboard.
