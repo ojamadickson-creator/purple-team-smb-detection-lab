@@ -26,7 +26,7 @@ The entire lab lives inside VirtualBox across three network segments. Two are ho
 
 **LAN Segment (Host-Only Primary):** `192.168.56.0/24`
 
-This is the internal corporate network. The Domain Controller lives here at `192.168.56.102`. Splunk is at `192.168.56.106`. REMnux, which I used as the attack platform, sits at `192.168.56.12`.
+This is the internal corporate network. The Domain Controller lives here at `192.168.56.102`. Splunk is at `192.168.56.106`. REMnux, which I used as the attack platform, sits at `192.168.57.12`.
 
 **WAN Segment (Host-Only #2):** `192.168.57.0/24`
 
