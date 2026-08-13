@@ -1,0 +1,120 @@
+SOP: SMB Brute Force Detection and Visualization via Splunk
+
+1. Scope and Strategic Objective
+
+In the modern threat landscape, Server Message Block (SMB) traffic remains a primary vector for lateral movement and unauthorized credential harvesting. Monitoring Port 445 is a cornerstone of a proactive defense posture, as it provides early-warning telemetry for brute force attacks before they escalate into full-scale network compromise. Detecting these patterns in real-time allows security teams to interdict threat actors during the exploitation phase of the kill chain.
+
+The objective of this Standard Operating Procedure (SOP) is to provide security operations center (SOC) teams with a standardized workflow for detecting, visualizing, and confirming SMB-based compromise using Splunk Enterprise and Windows Security logs. By centralizing host-level authentication data and network-level gateway logs, this protocol ensures the transition from a "failed login attempt" to a "confirmed account takeover" (ATO) is identified with high fidelity.
+
+This document outlines the architectural requirements, detection logic, and simulation steps necessary to validate a robust SMB defense strategy.
+
+2. Environmental Architecture and Network Topology
+
+To ensure high-fidelity detection testing, a multi-tiered environment is required to isolate traffic flows and provide clear visibility at each layer of the OSI model. This separation allows analysts to differentiate between traffic arriving at the perimeter and events occurring on the endpoint, which is essential for reducing false positives and confirming successful breaches.
+
+The following components must be configured to support the detection workflow:
+
+Component	Role	Specifications
+Attacker Node	Threat Actor Simulation	Remnux Linux (Adapter 2 - Host-Only) equipped with Hydra.
+Target Nodes	Victim Assets	Windows 10 Workstation and Windows Domain Controller (DC: 192.168.56.102) on Adapter 1 (Internal).
+SIEM	Data Aggregation & Analysis	Splunk Enterprise (Search & Reporting) located on the internal segment.
+Gateway	Traffic Routing & Perimeter Logs	PFSense Firewall configured for inter-segment routing and log forwarding.
+
+Connectivity and Routing Analysis Traffic must be routed through the firewall to ensure that network-level hits on Port 445 are recorded in the gateway logs before reaching the target nodes. The use of a Host-Only adapter for the Attacker Node and an Internal adapter for the Target Nodes creates a controlled, routed environment. This architecture allows the firewall to serve as the primary sensor for reconnaissance phases, while the Windows endpoints serve as the sensors for the active exploitation phase.
+
+With the environment established, the focus turns to the precise ingestion of log data.
+
+3. Log Ingestion and Source Configuration
+
+Establishing "Absolute Grounding" in log data is fundamental to detection engineering. Security analysts must ensure there are no visibility gaps between the endpoint recording a failed login and the SIEM receiving the event, as missing logs are the primary cause of missed alerts during a live incident.
+
+Endpoint Log Ingestion The Splunk Universal Forwarder (UF) must be deployed on the Windows 10 Workstation and the Domain Controller. The UF should be configured to forward the following source types to the main index:
+
+* WinEventLog:Security: Essential for capturing EventCode 4625 (Failure) and 4624 (Success).
+* WinEventLog:System: For monitoring system-level service changes during lateral movement.
+* WinEventLog:Application: To identify application-level credential failures.
+
+Network Log Ingestion Firewall logs must be ingested via Syslog using UDP Port 514. Specifically, the firewall rules must be configured to log all traffic hitting Port 445 (SMB) originating from outside the target segment. This secondary layer of visibility allows the SOC to correlate network connection attempts with host-level authentication events, providing a multi-dimensional view of the attack.
+
+Once the data stream is verified, detection logic can be engineered to identify automated threats.
+
+4. Detection Engineering: SPL Query Development
+
+Effective brute force detection relies on threshold-based alerting rather than simple event notification. Automated tools like Hydra generate high-volume traffic patterns that are distinct from routine human error (e.g., a single mistyped password), making threshold logic the superior method for reducing alert fatigue.
+
+Primary Query: Identifying Failed SMB Logins The following query identifies potential brute force activity by isolating high frequencies of failed login events (EventCode 4625) from a single source.
+
+index=main source="WinEventLog:Security" EventCode=4625
+| stats count by Source_Network_Address
+| where count > 5
+| rename count as "Failed_Attempts"
+
+
+Note: While count > 5 is the recommended baseline for detection, SOC managers should adjust this threshold based on environmental baselines to account for service accounts or frequent legitimate user errors.
+
+Secondary Query: Successful Compromise Confirmation A successful brute force attack is only catastrophic once an account is compromised. This secondary query identifies successful logins (EventCode 4624) originating from the same IP addresses flagged in the primary brute force search.
+
+index=main source="WinEventLog:Security" EventCode=4624 
+[ search index=main source="WinEventLog:Security" EventCode=4625 
+  | stats count by Source_Network_Address 
+  | where count > 5 
+  | fields Source_Network_Address ]
+| table _time, Target_UserName, Source_Network_Address
+
+
+These technical artifacts provide the foundation for real-time visual monitoring.
+
+5. Real-Time Dashboard Construction
+
+Visual data representation is critical for rapid incident response, allowing an analyst to interpret the severity of an attack in seconds. A real-time dashboard transforms raw SPL results into a chronological narrative of the threat.
+
+Dashboard: "Automated Brute Force Login Attempts" Create a new dashboard in Splunk with the following three panels:
+
+* Panel 1: Failed Login Volume (Timechart)
+  * SPL: index=main source="WinEventLog:Security" EventCode=4625 | timechart span=1m count
+  * Purpose: Visualizes the "spike" in activity over a 5-minute window, indicating an automated tool is running.
+* Panel 2: Attacker Attribution (Table)
+  * SPL: index=main source="WinEventLog:Security" EventCode=4625 | stats count by Source_Network_Address | sort - count
+  * Purpose: Identifies the top source IPs responsible for the failures.
+* Panel 3: Account Takeover Confirmation (Table)
+  * SPL: index=main source="WinEventLog:Security" EventCode=4624 | table _time, Target_UserName, Source_Network_Address
+  * Purpose: Lists any successful logins from the attacker's IP to confirm a breach has occurred.
+
+Visualizing these components leads to deeper analysis through cross-source correlation.
+
+6. Advanced Correlation: Attack Phase Analysis
+
+The "So What?" of security monitoring lies in the correlation of disparate log sources. By joining firewall syslog data with host-level Windows events, the SOC can differentiate between the reconnaissance phase and the active exploitation phase of an attack.
+
+Correlation Logic: Firewall vs. Host
+
+* Scan/Reconnaissance Phase: Firewall logs show hits on Port 445 from an external IP, but no corresponding 4625 events appear on the host. This indicates the firewall is successfully dropping traffic or the attacker is probing the port without attempting authentication.
+* Active Brute Force Phase: High-volume 4625 events on the Windows host correlate with Port 445 traffic on the firewall, confirming the perimeter has been bypassed or allowed, and the host is under active pressure.
+
+Correlation SPL Query:
+
+index=main (sourcetype=syslog dest_port=445) OR (source="WinEventLog:Security" EventCode=4625)
+| eval attacker_ip=coalesce(src_ip, Source_Network_Address)
+| stats values(sourcetype) as sources, count by attacker_ip
+| eval phase=if(mvcount(sources)>1, "Active Brute Force / Perimeter Breached", "Reconnaissance / Blocked")
+| table attacker_ip, phase, count
+
+
+This intelligence is operationalized through simulation and validation.
+
+7. Simulation and Detection Validation
+
+To ensure SIEM logic is functional, "Purple Team" validation is mandatory. This process confirms that the configured dashboards and alerts trigger as expected during a live attack.
+
+Validation Procedure On the Remnux Attacker Node, use Hydra to launch a targeted attack against the Domain Controller IP (192.168.56.102). The command uses the username background (identified in simulation) and a custom password list:
+
+hydra -l background -P /root/password_list.txt smb://192.168.56.102
+
+Expected Output in Splunk Upon execution, the analyst should observe the following in the dashboard:
+
+1. Panel 1 & 2: A rapid spike of exactly 99 failed login events (EventCode 4625) appearing within a 1-to-5 minute window.
+2. Panel 3: A single successful login event (EventCode 4624) appearing immediately after the failures, confirming Hydra successfully guessed the password.
+
+Summary
+
+This SOP transforms raw log ingestion into a sophisticated detection system. By architecting a routed environment and engineering multi-source correlation queries, the SOC can move beyond simple alerts to a deep understanding of the attack lifecycle. This proactive posture ensures that SMB brute force attempts are detected and confirmed with the speed required to prevent widespread network compromise.
