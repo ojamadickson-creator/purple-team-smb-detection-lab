@@ -1,4 +1,0 @@
-index=main sourcetype=WinEventLog EventCode=4624
-| stats count by src_ip
-| where count >= 1
-| sort - count
