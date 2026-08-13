@@ -39,7 +39,7 @@ Standard VirtualBox NAT. Gives every VM outbound internet access for updates wit
 The attack path that actually worked looks like this:
 
 ```
-REMnux (192.168.56.12) 
+REMnux (192.168.57.12) 
   -> OPNsense LAN Gateway (192.168.56.254) 
   -> Domain Controller (192.168.56.102:445) 
   -> Windows Event Log (4625/4624) 
@@ -48,15 +48,14 @@ REMnux (192.168.56.12)
   -> Detection Dashboard
 ```
 
-One weird thing I noticed: Splunk recorded the source IP as `192.168.56.1`, not `192.168.56.12`. Turns out VirtualBox's host-only adapter does some NAT trickery behind the scenes. It doesn't break the detection, but it's worth knowing if you're trying to attribute traffic in a virtual environment.
-
+One weird thing I noticed: Splunk recorded the source IP as 192.168.56.1, not 192.168.57.12 where REMnux actually lives. I never fully traced why — it could be VirtualBox adapter behavior, OPNsense NAT, or something else in the virtualized path. The detection still works fine, but precise IP attribution in this lab environment requires keeping that quirk in mind.
 ---
 
 ## What I Actually Built
 
 ### Network Segmentation with OPNsense
 
-I used OPNsense 26.7 as the perimeter firewall. The original SOP I was working from mentioned pfSense, but the actual lab uses OPNsense. The WAN interface faces the untrusted segment, and the LAN interface faces the internal network. I had to uncheck "Block Private Networks" on the WAN interface because this is a lab using RFC 1918 addresses everywhere. Without that change, OPNsense drops traffic before firewall rules even get evaluated.
+I used OPNsense 26.7 as the perimeter firewall. The WAN interface faces the untrusted segment, and the LAN interface faces the internal network. I had to uncheck "Block Private Networks" on the WAN interface because this is a lab using RFC 1918 addresses everywhere. Without that change, OPNsense drops traffic before firewall rules even get evaluated.
 
 The rules I configured are simple but deliberate:
 - Allow ICMP for diagnostics
@@ -69,11 +68,11 @@ Rule order matters. A lot. If the deny rule sits above the pass rule, nothing ge
 
 ### Windows Domain Controller Hardening
 
-The DC runs Windows Server 2016. I enabled all three Windows Firewall profiles (Domain, Public, Private) and added granular allow rules for the lab subnets. Here's the thing about Windows Firewall that caught me off guard: it treats cross-subnet traffic as "external" even when everything is in a lab. So traffic from the WAN segment gets evaluated against the Public profile, not Domain. I had to explicitly allow SMB from the lab IP ranges to get authentication attempts through.
+The DC runs Windows Server 2016.After fixing OPNsense, traffic still wasn't getting through to the DC. Based on my troubleshooting notes, Windows Firewall was blocking the SMB connection attempts. I worked through the firewall configuration until authentication attempts started succeeding. The exact sequence involved testing with the firewall disabled to isolate the variable, then re-enabling it with proper allow rules.
 
 ### Log Ingestion Pipeline
 
-I deployed the Splunk Universal Forwarder on the DC to ship `WinEventLog:Security` to the main index. For network visibility, I configured OPNsense to forward firewall syslogs via UDP 514. That dual visibility is what makes the cross-source correlation possible. Without the firewall logs, you're blind to reconnaissance. Without the endpoint logs, you're blind to whether the attack actually succeeded.
+I deployed the Splunk Universal Forwarder on the DC to ship `WinEventLog: Security, Application, and System logs to the main index. For network visibility, I configured OPNsense to forward firewall syslogs via UDP 514. That dual visibility is what makes the cross-source correlation possible. Without the firewall logs, you're blind to reconnaissance. Without the endpoint logs, you're blind to whether the attack actually succeeded.
 
 ### Detection Engineering
 
@@ -84,8 +83,6 @@ This is where the project gets fun. I wrote three SPL queries that work together
 index=main sourcetype=WinEventLog EventCode=4625
 | stats count by src_ip
 | where count > 5
-| rename count as Failed_Attempts
-| sort - Failed_Attempts
 ```
 
 Why five? Because normal users don't fat-finger their password six times in a row. Automated tools like Hydra do. Five is the sweet spot. Low enough to catch real attacks fast, high enough to avoid alert fatigue from someone who just got a new keyboard.
@@ -141,21 +138,20 @@ This project would have been a lot shorter if everything worked the first time. 
 
 **The Silent Drop**
 
-My first attack attempt failed completely. No logs. No errors. Just silence. I spent an hour checking Splunk queries before I realized the traffic wasn't even reaching the DC. OPNsense was dropping all private network traffic on the WAN interface because "Block Private Networks" was checked by default. The fix was simple once I found it, but finding it required checking OPNsense live logs and realizing the firewall was rejecting packets before rules were evaluated.
+My initial attack attempts failed silently. Based on my troubleshooting notes, OPNsense was dropping traffic because the WAN interface had "Block Private Networks" enabled by default. Once I unchecked that setting, traffic started flowing. I documented this in my lab notes but didn't capture screenshots of the initial failure state.
 
 **Windows Firewall Said No**
 
-After fixing OPNsense, the traffic reached the DC but got blocked by Windows Firewall. Even though I had added allow rules, the firewall treated cross-subnet SMB as external traffic and applied the Public profile. I temporarily disabled the firewall to isolate the variable, confirmed traffic flowed, then re-enabled it and added explicit rules for the lab subnets.
+After fixing OPNsense, traffic still wasn't getting through to the DC. Based on my lab notes, I worked through Windows Firewall configuration until SMB authentication attempts succeeded. The exact steps involved isolating whether the host-based firewall was the blocking control and adjusting the rules accordingly.
 
 **Docker Hijacked My Routing**
 
-Kali Linux had Docker installed, and Docker's iptables NAT rules were intercepting inter-subnet traffic. I flushed the Docker rules and used REMnux on the WAN segment instead, which gave me a realistic perimeter-to-internal attack path through the firewall.
+
+I initially planned to use Kali Linux on the WAN segment, but ran into routing complications. I pivoted to REMnux on the WAN segment at 192.168.57.12, which gave me a clean attack path through the OPNsense firewall to the DC. The attack succeeded from that position, validating the perimeter-to-internal detection pipeline.
 
 **The IP Mismatch**
 
-I kept looking for `192.168.57.12` in Splunk and couldn't find it. The source IP showed up as `192.168.56.1` instead. After some head-scratching, I realized VirtualBox's host-only adapter was doing NAT translation. The detection still works, but attribution in virtual labs requires understanding this behavior.
-
-These aren't bugs in the project. They're realistic troubleshooting scenarios. In a real SOC, you deal with silent failures, misconfigured firewalls, and routing issues every day. Working through them in a lab is exactly the kind of experience that translates to production environments.
+I kept looking for 192.168.57.12 in Splunk and couldn't find it. The source IP showed up as 192.168.56.1 instead. I never fully traced why — it could be VirtualBox adapter behavior, OPNsense NAT, or something else in the virtualized path. The detection still works fine, but precise IP attribution in this lab environment requires keeping that quirk in mind.
 
 ---
 
@@ -163,11 +159,10 @@ These aren't bugs in the project. They're realistic troubleshooting scenarios. I
 
 | Tactic | Technique ID | Technique Name | Evidence |
 |--------|-------------|----------------|----------|
-| Credential Access | T1110 | Brute Force | 99 failed authentication attempts in under three minutes |
+| Credential Access | T1110 | Brute Force | 99 failed authentication attempts in approximately 2 seconds |
 | Credential Access | T1110.001 | Password Guessing | Hydra iterating a custom password list against SMB |
-| Initial Access | T1078 | Valid Accounts | Successful logon with compromised `vagrant` credentials |
-| Lateral Movement | T1021.002 | SMB/Windows Admin Shares | SMB over TCP 445 used for authentication attempts |
-
+| Initial Access | T1078 | Valid Accounts | Successful logon with compromised vagrant credentials |
+SMB/445 was the protocol used for initial access, which could also map to T1021.002 under Lateral Movement in a multi-system scenario.
 I didn't include T1083 (File and Directory Discovery) because this simulation only covers authentication, not post-compromise activity. If I expand this project later, that would be a natural next step.
 
 ---
@@ -178,10 +173,9 @@ I didn't include T1083 (File and Directory Discovery) because this simulation on
 |-------|---------------|
 | Network Security Architecture | Designed segmented networks with OPNsense, configured NAT traversal, and managed subnet isolation |
 | Adversarial Simulation | Configured Hydra on REMnux, built a custom password list, and executed a password spray campaign |
-| Host-Based Hardening | Managed Windows Firewall profiles, created granular inbound rules, and validated cross-subnet behavior |
-| SIEM Detection Engineering | Wrote SPL queries, tuned the threshold at five attempts, built timechart visualizations, and used subsearch logic |
+| SIEM Detection Engineering | Wrote SPL queries, tuned the threshold at five attempts, built timechart visualizations, and used sub search logic |
 | Incident Analysis | Correlated EventCode 4625 with 4624, attributed activity to source IPs, and reconstructed the attack timeline |
-| Troubleshooting | Used ping, traceroute, arping, iptables, and OPNsense live logs to isolate silent failures layer by layer |
+| Troubleshooting | Used ping to verify layer-3 connectivity from REMnux to the DC, then iteratively diagnosed why SMB traffic wasn't reaching the target through the OPNsense firewall and Windows host-based controls |
 | Cross-Source Correlation | Fused OPNsense syslog with Windows Event Logs to create a multi-dimensional view of the attack |
 
 ---
@@ -218,55 +212,25 @@ smb-brute-force-detection/
     ├── dashboard_results.png
     ├── attack_terminal.png
     └── mindmap.png
-```
 
----
-
-## Quick Start
-
-### What You Need
-- VirtualBox 7.0 or newer
-- Vagrant 2.4 or newer
-- At least 16 GB RAM for the VMs
-- About 100 GB free disk space
-
-### Deploy Everything
-```bash
-git clone https://github.com/YOUR_USERNAME/smb-brute-force-detection.git
-cd smb-brute-force-detection/deployment
-chmod +x deploy.sh
-./deploy.sh
-```
-
-The script validates your environment, creates the host-only networks, imports the base boxes, provisions each VM, and gives you the access URLs.
-
-### Validate the Detection
-After deployment:
-1. Open Splunk at `http://192.168.56.106:8000`
-2. Open OPNsense at `https://192.168.57.254`
-3. SSH into REMnux and run: `hydra -l vagrant -P /tmp/passwordlist smb://192.168.56.102`
-4. Watch the Splunk dashboard populate with failed attempts, then the successful login
 
 ---
 
 ## What I Learned
 
-**Layered detection actually matters.** Combining perimeter firewall logs with endpoint events gives you context that neither source provides alone. The firewall tells you someone is knocking. The DC tells you whether they got in.
+**Layered detection actually matters. Combining perimeter firewall logs with endpoint events gives you context that neither source provides alone. The firewall tells you someone is knocking. The DC tells you whether they got in.
 
-**Threshold tuning is an art, not a science.** I started with a threshold of two and got flooded with noise from my own testing. I bumped it to twenty and realized I'd miss a slow password spray. Five attempts in five minutes felt right for this environment, but in production you'd baseline against real user behavior.
+**Threshold tuning requires deliberate thought. I settled on five failed attempts because normal users rarely miss their password more than twice, while automated tools like Hydra generate dozens or hundreds in seconds. In production you'd baseline this against real user behavior.
 
-**Dashboards should tell stories.** A table of raw events is useless under pressure. My three-panel layout guides the analyst: first, here's the attack. Second, here's what it looks like over time. Third, here's whether we lost. That's the entire investigation in one screen.
+**Dashboards should tell stories. A table of raw events is useless under pressure. My three-panel layout guides the analyst: first, here's the attack. Second, here's what it looks like over time. Third, here's whether we lost. That's the entire investigation in one screen.
 
-**The hardest part wasn't the attack. It was the silence.** When Hydra failed the first time, there was no error message. No log. Just nothing. Diagnosing that required checking ARP tables, routing tables, firewall logs, and host-based controls. That's exactly what SOC analysts do when an expected alert doesn't fire.
-
+**The hardest part wasn't the attack. It was getting the traffic to flow correctly through OPNsense and ensuring Splunk was actually receiving the logs. That's exactly what SOC analysts do when an expected alert doesn't fire.
 ---
 
-## Interview Talking Points
 
-> "I built this lab because I wanted to know if I could detect a brute force attack from start to finish. Not just write a query, but architect the network, simulate the attacker, troubleshoot the failures, and build a dashboard that tells the story. The first attack failed completely. OPNsense was dropping private network traffic before rules were evaluated. Windows Firewall was blocking cross-subnet SMB. Docker on Kali hijacked the routing table. Working through those issues taught me more than any tutorial could."
+> I built this lab because I wanted to know if I could detect a brute force attack from start to finish. Not just write a query, but architect the network, simulate the attacker, and build a dashboard that tells the story. Getting the traffic to flow correctly through OPNsense and into Splunk was where most of the learning happened.
 
-> "My dashboard has three panels that answer three questions. First: is someone attacking us? The failed login table shows 99 attempts from one IP, well above my threshold of five. Second: what does the attack look like? The timechart shows a massive spike in a two-minute window, which is the signature of automated tooling. Third: did they succeed? The successful login panel shows one EventCode 4624 from the same IP, confirming the vagrant account was compromised. In a production SOC, that third panel triggers an immediate escalation."
-
+> My dashboard has three panels that answer three questions. First: is someone attacking us? The failed login table shows 99 attempts from one IP, well above my threshold of five. Second: what does the attack look like? The timechart shows a massive spike in a one-minute window, which is the signature of automated tooling. Third: did they succeed? The successful login panel shows one EventCode 4624 from the same IP, confirming the vagrant account was compromised. In a production SOC, that third panel triggers an immediate escalation.
 ---
 
 ## Connect
@@ -274,8 +238,8 @@ After deployment:
 If you're a recruiter, hiring manager, or security engineer who wants to talk shop, I'd love to hear from you. This repository has everything you need to replicate the lab, adapt the detection logic, or just see how I think through problems.
 
 **LinkedIn:** https://www.linkedin.com/in/ojama-d-28a13814a  
-**YouTube:** [Your YouTube Channel URL]  
-**Email:** [Your Email Address]
+**YouTube:** https://www.youtube.com/watch?v=wYPfKIGx95Y  
+**Email:** ojamadickson@gmail.com
 
 ---
 
