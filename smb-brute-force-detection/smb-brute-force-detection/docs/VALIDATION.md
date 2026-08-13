@@ -88,4 +88,4 @@ The validation passes if:
 5. Cross-source correlation shows both the phase of attack
 ## A Note on Source IP Attribution
 
-Splunk will show the source IP as `192.168.56.1`, not `192.168.56.12` (REMnux's actual IP). This is because VirtualBox's host-only adapter performs NAT translation. The detection logic works exactly the same, but if you need precise attribution in a production environment, use physical switches or properly routed VLANs instead of VirtualBox host-only networking.
+Splunk shows the source IP as 192.168.56.1, not 192.168.57.12 where REMnux actually lives. I never fully traced why — it could be VirtualBox adapter behavior, OPNsense NAT, or something else in the virtualized path.
