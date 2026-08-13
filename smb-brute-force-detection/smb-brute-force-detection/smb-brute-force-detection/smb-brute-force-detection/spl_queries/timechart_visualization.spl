@@ -1,0 +1,2 @@
+index=main sourcetype=WinEventLog EventCode=4625
+| timechart span=1m count by src_ip
