@@ -6,7 +6,7 @@
 [![Attacker](https://img.shields.io/badge/Attacker-REMnux-red)](https://remnux.org/)
 [![Target](https://img.shields.io/badge/Target-Windows%20Server%202016-purple)](https://www.microsoft.com/)
 
-> **YouTube Demo:** [Watch the full attack and detection walkthrough](https://www.youtube.com/watch?v=wYPfKIGx95Y) *(Replace with your actual link)*
+> **YouTube Demo:** [Watch the full attack and detection walkthrough](https://www.youtube.com/watch?v=wYPfKIGx95Y) 
 
 ---
 
