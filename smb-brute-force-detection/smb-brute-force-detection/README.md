@@ -147,8 +147,7 @@ After fixing OPNsense, the traffic reached the DC but got blocked by Windows Fir
 
 **Docker Hijacked My Routing**
 
-Kali Linux had Docker installed, and Docker's iptables NAT rules were intercepting inter-subnet traffic. I flushed the Docker rules and eventually moved the attack to REMnux on the LAN segment to simplify the topology.
-
+Kali Linux had Docker installed, and Docker's iptables NAT rules were intercepting inter-subnet traffic. I flushed the Docker rules and eventually moved the attack to REMnux on the WAN segment.
 **The IP Mismatch**
 
 I kept looking for `192.168.56.12` in Splunk and couldn't find it. The source IP showed up as `192.168.56.1` instead. After some head-scratching, I realized VirtualBox's host-only adapter was doing NAT translation. The detection still works, but attribution in virtual labs requires understanding this behavior.
