@@ -9,7 +9,7 @@
 
 ## The Bottom Line
 
-This project demonstrates end-to-end detection engineering capability. I architected a segmented virtual network, simulated a realistic SMB brute force attack, troubleshot multi-layer firewall and routing failures, and built a Splunk dashboard that detects the attack and confirms account compromise. The entire pipeline is automated and deployment-ready.
+This project demonstrates end-to-end detection engineering capability. I architected a segmented virtual network, simulated a realistic SMB brute force attack, and built a Splunk dashboard that detects the attack and confirms account compromise. The entire pipeline is automated and deployment-ready.
 
 ---
 
@@ -25,7 +25,7 @@ The answer is yes, and this repository contains everything required to prove it.
 
 ## What Was Accomplished
 
-A fully segmented network was built inside VirtualBox using OPNsense 26.7 as a perimeter firewall. A Windows Server 2016 Domain Controller was configured with Active Directory and hardened with Windows Firewall. A Splunk Enterprise instance was deployed with the Universal Forwarder ingesting Windows Security Events. REMnux served as the attack platform.
+A fully segmented network was built inside VirtualBox using OPNsense 26.7 as a perimeter firewall. A Windows Server 2016 Domain Controller served as the target. A Splunk Enterprise instance was deployed with the Universal Forwarder ingesting Windows Security Events. REMnux on the WAN segment served as the attack platform.
 
 I generated a custom password list of one hundred entries, ending with the known-valid credential to guarantee a successful compromise for validation purposes. Hydra v9.5 was used to execute the attack over SMB port 445.
 
@@ -41,11 +41,11 @@ A Splunk dashboard named "Brute Force login Attempts" was built with three panel
 
 **Firewall Configuration:** Granular pass rules for ICMP, DNS, LDAP, and SMB. Explicit rule ordering above default deny. Private network blocking disabled for lab RFC 1918 traffic.
 
-**Attack Simulation:** Hydra v9.5 on REMnux. One hundred password attempts in approximately two seconds. Target: Domain Controller at `192.168.56.102` over SMB.
+**Attack Simulation:** Hydra v9.5 on REMnux at `192.168.57.12`. One hundred password attempts in approximately two seconds. Target: Domain Controller at `192.168.56.102` over SMB.
 
 **Detection Logic:** Threshold-based alerting at five failed attempts. Time-windowed aggregation at one-minute spans. Cross-source correlation between firewall syslog and Windows Event Logs.
 
-**Validation Results:** 99 failed logons (EventCode 4625), 1 successful logon (EventCode 4624), source IP attributed to `192.168.56.1`, attack duration under three minutes.
+**Validation Results:** 99 failed logons (EventCode 4625), 1 successful logon (EventCode 4624), source IP attributed to `192.168.56.1`, attack duration approximately two seconds.
 
 ---
 
@@ -57,13 +57,11 @@ This project required and demonstrated the following capabilities:
 
 2. **Adversarial Simulation:** Configuring attack tooling, generating custom wordlists, and executing password spray campaigns in a controlled environment.
 
-3. **Host-Based Security:** Managing Windows Firewall profiles, creating granular inbound rules, and understanding cross-subnet traffic behavior.
+3. **SIEM Engineering:** Authoring SPL queries, tuning detection thresholds, building real-time dashboards, and correlating disparate log sources.
 
-4. **SIEM Engineering:** Authoring SPL queries, tuning detection thresholds, building real-time dashboards, and correlating disparate log sources.
+4. **Incident Analysis:** Reconstructing attack timelines from raw logs, attributing activity to source IPs, and confirming compromise through EventCode correlation.
 
-5. **Incident Analysis:** Reconstructing attack timelines from raw logs, attributing activity to source IPs, and confirming compromise through EventCode correlation.
-
-6. **Troubleshooting:** Systematic diagnosis of silent failures across network layers, from ARP resolution to host-based access controls.
+5. **Troubleshooting:** Used ping to verify layer-3 connectivity and systematically worked through OPNsense configuration until SMB authentication attempts and log ingestion succeeded.
 
 ---
 
@@ -71,7 +69,7 @@ This project required and demonstrated the following capabilities:
 
 For a security operations team, this detection pipeline translates directly into reduced mean time to detect (MTTD) and mean time to respond (MTTR). The dashboard allows a Tier 1 analyst to identify a brute force campaign and confirm compromise in seconds rather than hours. The threshold tuning eliminates false positives that create alert fatigue. The cross-source correlation provides the context needed for immediate escalation and containment.
 
-For a hiring manager, this project proves the ability to build, break, fix, and detect. It is not a tutorial walkthrough. It is an original engineering effort that required solving real problems to produce a working result.
+For a hiring manager, this project proves the ability to build, simulate, and detect. It is not a tutorial walkthrough. It is an original engineering effort that produced a working result.
 
 ---
 
@@ -84,4 +82,4 @@ For a hiring manager, this project proves the ability to build, break, fix, and 
 
 ---
 
-*This project was built to demonstrate practical detection engineering. Every component was configured manually, every failure was diagnosed systematically, and every detection was validated with live attack data.*
+*This project was built to demonstrate practical detection engineering. Every component was configured manually, and every detection was validated with live attack data.*
