@@ -13,7 +13,7 @@ sudo apt-get install -y hydra net-tools iputils-ping
 sudo ip link set enp0s8 up
 sudo ip addr add 192.168.57.12/24 dev enp0s8 || true
 
-# Add static route to DC subnet via OPNsense LAN IP
+# Add static route to DC subnet via OPNsense WAN IP (gateway for the 192.168.57.0/24 segment)
 sudo ip route add 192.168.56.0/24 via 192.168.57.254 dev enp0s8 || true
 
 # Copy password list to /tmp
