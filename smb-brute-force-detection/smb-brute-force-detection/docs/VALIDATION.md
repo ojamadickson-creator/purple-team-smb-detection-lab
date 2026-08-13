@@ -73,7 +73,6 @@ index=main (sourcetype=syslog "pass") OR (host=dc EventCode=4625)
 ```
 
 You should see a chronological table showing:
-- Firewall pass events on port 445
 - Windows failed logon events
 - All attributed to `192.168.56.1`
 
@@ -86,8 +85,7 @@ The validation passes if:
 2. Splunk records at least 90 EventCode 4625 events
 3. Splunk records at least 1 EventCode 4624 event from the attacker IP
 4. The dashboard visualizes the attack burst clearly
-5. Cross-source correlation shows both firewall and endpoint telemetry
-
+5. Cross-source correlation shows both the phase of attack
 ## A Note on Source IP Attribution
 
 Splunk will show the source IP as `192.168.56.1`, not `192.168.56.12` (REMnux's actual IP). This is because VirtualBox's host-only adapter performs NAT translation. The detection logic works exactly the same, but if you need precise attribution in a production environment, use physical switches or properly routed VLANs instead of VirtualBox host-only networking.
