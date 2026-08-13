@@ -46,9 +46,7 @@ REMnux (192.168.57.12)
   -> Splunk Universal Forwarder 
   -> Splunk SIEM (192.168.56.106) 
   -> Detection Dashboard
-```
-
-One weird thing I noticed: Splunk recorded the source IP as 192.168.56.1, not 192.168.57.12 where REMnux actually lives. I never fully traced why — it could be VirtualBox adapter behavior, OPNsense NAT, or something else in the virtualized path. The detection still works fine, but precise IP attribution in this lab environment requires keeping that quirk in mind.
+```One weird thing I noticed: Splunk recorded the source IP as 192.168.56.1, not 192.168.57.12 where REMnux actually lives. I never fully traced why — it could be VirtualBox adapter behavior, OPNsense NAT, or something else in the virtualized path. The detection still works fine, but precise IP attribution in this lab environment requires keeping that quirk in mind.
 ---
 
 ## What I Actually Built
