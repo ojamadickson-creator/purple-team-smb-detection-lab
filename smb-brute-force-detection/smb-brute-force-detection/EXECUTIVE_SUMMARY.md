@@ -1,6 +1,6 @@
 # Executive Summary: SMB Brute Force Detection & Response
 
-**Project Owner:** [Your Name]  
+**Project Owner:** Akpoga Dickson Ojama 
 **Date:** August 2026  
 **Environment:** VirtualBox Lab with OPNsense, Splunk Enterprise 10.4.2, Windows Server 2016, REMnux  
 **Classification:** Portfolio / Purple Team Demonstration
