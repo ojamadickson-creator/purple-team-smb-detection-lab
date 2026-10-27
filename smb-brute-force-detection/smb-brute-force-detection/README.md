@@ -36,6 +36,9 @@ This simulates the external untrusted network. OPNsense faces this segment on it
 
 Standard VirtualBox NAT. Gives every VM outbound internet access for updates without bridging them to the host's physical network.
 
+<img width="2752" height="1536" alt="The Architecture" src="https://github.com/user-attachments/assets/4c75e0ff-74df-4128-9f58-e9c9ba8ae70b" />
+
+
 The attack path that actually worked looks like this:
 
 ```
